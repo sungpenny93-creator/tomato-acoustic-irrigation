@@ -1,0 +1,19 @@
+{
+    "model_path": "models/best_model.tflite",
+    "sample_rate": 250000,
+    "classes": ["noise", "normal", "thirsty"],
+    "gpio": {
+        "relay_pin": 17,
+        "led_green_pin": 27,
+        "led_red_pin": 22
+    },
+    "irrigation": {
+        "stress_threshold": 3,
+        "irrigation_duration_sec": 30,
+        "cooldown_period_sec": 300
+    },
+    "logging": {
+        "log_dir": "logs",
+        "log_level": "INFO"
+    }
+}
