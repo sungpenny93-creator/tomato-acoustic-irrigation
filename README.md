@@ -368,13 +368,13 @@ data/spikerbox_raw/
 {
     "model_path": "models/best_model.tflite",
     "audio": {
-        "sample_rate": 44100,          // 取樣率（Hz）— BYB「USB2 Digital Audio」實測為 44100
+        "sample_rate": 10000,          // 取樣率（Hz）
         "duration_seconds": 1.0,       // 每次錄音長度
         "listen_interval_seconds": 300  // 監測間隔（秒）
     },
     "spikerbox": {
         "device_keywords": ["SpikerBox", "Backyard", "Digital Audio", "USB Audio"],
-        "sample_rate": 44100           // 要跟裝置實際取樣率一致，否則會退回模擬模式
+        "sample_rate": 10000           // 序列埠 Plant SpikerBox 韌體固定約 10000Hz
     },
     "dataset": {
         "enabled": true,               // 是否自動儲存資料集
@@ -402,10 +402,12 @@ data/spikerbox_raw/
 }
 ```
 
-> ⚠️ **取樣率一定要對**：`AudioCapture` 偵測時會用 `sample_rate` 去驗證裝置，
-> 若填的值裝置不支援（例如舊設定的 `10000`），偵測會失敗並**自動退回模擬模式**，
-> 你看到的頻譜圖就會是模擬音檔而不是 SpikerBox。用 `python -m pi.test_spikerbox`
-> 可以確認你這台的實際取樣率。
+> ⚠️ **取樣率要跟實際傳輸方式一致**：
+> - **樹莓派**上 Plant SpikerBox 走**序列埠**（`/dev/ttyACM0`），韌體固定約 **10000 Hz** → 用 `10000`。
+>   填錯（例如 44100）會導致每次錄音等逾時、且頻譜圖頻率軸被拉伸。
+> - **Windows** 上若裝置以 **USB 音訊**（「USB2 Digital Audio」）出現，實測是 **44100 Hz**；
+>   這種情況用 `python -m pi.test_spikerbox --rate 44100` 測試，不必改 config。
+> - `python -m pi.test_spikerbox` 會自動報出你這台的實際取樣率。
 
 ---
 

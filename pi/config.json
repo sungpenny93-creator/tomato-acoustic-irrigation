@@ -1,7 +1,7 @@
 {
     "model_path": "models/best_model.tflite",
     "audio": {
-        "sample_rate": 44100,
+        "sample_rate": 10000,
         "duration_seconds": 1.0,
         "listen_interval_seconds": 300
     },
@@ -13,7 +13,8 @@
             "USB Audio"
         ],
         "fallback_device": null,
-        "sample_rate": 44100,
+        "sample_rate": 10000,
+        "_comment_sample_rate": "序列埠 Plant SpikerBox 韌體固定約 10000Hz。Windows 上若走 USB 音訊(USB2 Digital Audio)實測是 44100，那時用 test_spikerbox --rate 44100 測試即可。",
         "channels": 1
     },
     "dataset": {
