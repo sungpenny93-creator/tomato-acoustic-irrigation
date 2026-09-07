@@ -127,8 +127,10 @@ def save_spectrogram_image(mel_spec_db: np.ndarray, sr: int,
     if os.path.exists(save_path):
         return
 
-    # 確保輸出目錄存在
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    # 確保輸出目錄存在（save_path 可能是「純檔名」，此時 dirname 會是空字串，跳過即可）
+    parent_dir = os.path.dirname(save_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
 
     # 建立畫布
     fig = plt.figure(figsize=Config.SPECTROGRAM_FIGSIZE)
