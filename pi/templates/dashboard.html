@@ -103,6 +103,24 @@
                 </div>
             </section>
 
+            <!-- ── 即時訊號（波形 / 頻譜圖）── -->
+            <section class="card card-live-spectro">
+                <div class="card-header">
+                    <h2>即時訊號</h2>
+                    <span class="monitor-badge" id="live-spectro-mode">連線中…</span>
+                </div>
+                <p class="monitor-desc">
+                    SpikerBox 每 2 秒的波形與頻譜圖，不需要 AI 模型。上：波形；下：頻譜圖（dB）。
+                </p>
+                <div class="spectrogram-container" style="margin-top:12px;">
+                    <img id="live-spectro-img" src="" alt="等待即時頻譜圖…" class="spectrogram-img">
+                    <p class="spectrogram-placeholder" id="live-spectro-placeholder">
+                        等待第一張頻譜圖…
+                    </p>
+                </div>
+                <p class="info-label" id="live-spectro-stats" style="margin-top:8px;font-family:monospace;word-break:break-all;"></p>
+            </section>
+
             <!-- ── 即時頻譜圖 + 推論結果 ── -->
             <section class="card card-inference">
                 <div class="card-header">

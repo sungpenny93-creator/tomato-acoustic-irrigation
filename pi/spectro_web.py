@@ -15,14 +15,14 @@ SpikerBox 即時頻譜圖 Web 檢視器（不含 AI / 不含水泵）
     audio  = 有抓到 USB 音訊裝置(正常)
     serial = 走序列埠的新版 SpikerBox
     mock   = ⚠️ 沒抓到硬體，正在放模擬音檔(代表偵測失敗，去看 test_spikerbox)
+
+（儀表板版的即時頻譜在 pi/web_controller.py，兩者共用 pi/spectro_render.py 的繪圖函式）
 """
 
 import os
 import sys
-import io
 import json
 import time
-import base64
 import threading
 from datetime import datetime
 
@@ -33,21 +33,20 @@ try:
 except Exception:
     pass
 
-import numpy as np
 from flask import Flask, jsonify
-from scipy.io.wavfile import read as wav_read
-from scipy.signal import spectrogram as scipy_spectrogram
-
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from pi.audio_capture import AudioCapture
+from pi.spectro_render import (
+    wav_to_mono_float,
+    stats_text,
+    render_waveform_spectrogram_b64,
+)
 
 
 # ─── 設定 ───────────────────────────────────────────
 DURATION_SECONDS = 2.0     # 每段擷取長度（頻譜圖看 2 秒比較清楚）
 REFRESH_SECONDS = 1.5      # 每隔多久擷取並更新一次
+SPECTRO_MAX_FREQ = 500     # 頻譜圖 y 軸上限(Hz)；植物電位訊號都在低頻，設 None 看全頻寬
 PORT = 5000
 
 
@@ -82,51 +81,6 @@ _latest = {
 _lock = threading.Lock()
 
 
-# ─── 產生波形 + 頻譜圖 PNG ──────────────────────────
-def render_png(x: np.ndarray, sr: int) -> str:
-    n = len(x)
-    t_axis = np.arange(n) / sr
-    xw = x - float(np.mean(x))
-
-    nperseg = min(1024, max(128, n // 8))
-    f, t, Sxx = scipy_spectrogram(xw, fs=sr, nperseg=nperseg,
-                                  noverlap=int(nperseg * 0.75))
-    Sxx_db = 10.0 * np.log10(Sxx + 1e-12)
-
-    fig, ax = plt.subplots(2, 1, figsize=(9, 5),
-                           gridspec_kw={"height_ratios": [1, 2]})
-    ax[0].plot(t_axis, x, lw=0.5, color="#2b8")
-    ax[0].set_xlim(0, t_axis[-1] if n else 1)
-    ax[0].set_ylim(-1.05, 1.05)
-    ax[0].set_ylabel("amplitude")
-    ax[0].set_title("Waveform")
-
-    mesh = ax[1].pcolormesh(t, f, Sxx_db, shading="gouraud", cmap="magma")
-    ax[1].set_ylabel("frequency (Hz)")
-    ax[1].set_xlabel("time (s)")
-    ax[1].set_title("Spectrogram (dB)")
-    fig.colorbar(mesh, ax=ax[1], pad=0.01)
-
-    fig.tight_layout()
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=100)
-    plt.close(fig)
-    return base64.b64encode(buf.getvalue()).decode("ascii")
-
-
-def compute_stats_text(x: np.ndarray, sr: int) -> str:
-    n = len(x)
-    xw = x - float(np.mean(x))
-    spec = np.abs(np.fft.rfft(xw))
-    freqs = np.fft.rfftfreq(n, 1.0 / sr)
-    band = freqs > 1.0
-    peak_f = float(freqs[band][np.argmax(spec[band])]) if band.any() else 0.0
-    rms = float(np.sqrt(np.mean(xw ** 2)))
-    clip = float(np.mean(np.abs(x) > 0.98)) * 100
-    return (f"SR={sr}Hz  samples={n}  RMS={rms:.4f}  "
-            f"peak={peak_f:.0f}Hz  clip={clip:.1f}%")
-
-
 # ─── 背景擷取迴圈 ──────────────────────────────────
 def capture_loop():
     audio = AudioCapture(
@@ -145,17 +99,9 @@ def capture_loop():
         try:
             ok = audio.record_audio(tmp_wav)
             if ok and os.path.isfile(tmp_wav):
-                sr, data = wav_read(tmp_wav)
-                x = np.asarray(data, dtype=np.float32)
-                if x.ndim > 1:
-                    x = x[:, 0]
-                if np.issubdtype(data.dtype, np.integer):
-                    x = x / float(np.iinfo(data.dtype).max)
-                elif np.max(np.abs(x)) > 1.5:
-                    x = x / 32768.0
-
-                png = render_png(x, sr)
-                stats = compute_stats_text(x, sr)
+                x, sr = wav_to_mono_float(tmp_wav)
+                png = render_waveform_spectrogram_b64(x, sr, max_freq=SPECTRO_MAX_FREQ)
+                stats = stats_text(x, sr)
                 with _lock:
                     _latest["png"] = png
                     _latest["ts"] = datetime.now().strftime("%H:%M:%S")
@@ -222,6 +168,7 @@ def main():
     _safe_print(f"  取樣率      : {SAMPLE_RATE} Hz")
     _safe_print(f"  擷取長度    : {DURATION_SECONDS}s")
     _safe_print(f"  更新間隔    : {REFRESH_SECONDS}s")
+    _safe_print(f"  頻譜上限    : {SPECTRO_MAX_FREQ} Hz")
     _safe_print(f"  網址        : http://0.0.0.0:{PORT}")
     _safe_print("=" * 55)
     _safe_print("  手機/電腦打開 http://<這台的IP>:5000　Ctrl+C 停止\n")

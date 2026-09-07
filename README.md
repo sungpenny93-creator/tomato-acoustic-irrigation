@@ -188,7 +188,8 @@ tomato-acoustic-irrigation/
 │   ├── irrigation.py           #   灌溉決策邏輯（AI 版）
 │   ├── sensors.py              #   DS18B20 溫度 + 電阻式土壤濕度（DO 數位模式）
 │   ├── soil_irrigation.py      #   純門檻自動灌溉（不用 AI，基準系統）
-│   ├── spectro_web.py          #   SpikerBox 即時頻譜圖 Web 檢視（診斷用）
+│   ├── spectro_render.py       #   波形+頻譜圖繪製（spectro_web 與儀表板共用）
+│   ├── spectro_web.py          #   SpikerBox 即時頻譜圖獨立頁面（診斷用）
 │   ├── test_spikerbox.py       #   SpikerBox 診斷腳本（掃裝置 + 錄音 + 波形圖）
 │   ├── dataset_manager.py      #   本地資料集管理
 │   ├── web_controller.py       #   Flask Web 整合控制面板
@@ -295,11 +296,14 @@ python -m pi.monitor
 在儀表板上點「**啟動監測**」按鈕，系統會開始自動迴圈：
 > 錄音 → 頻譜圖 → AI 推論 → 判定缺水 → 自動灌溉
 
-#### 方式 B：純 Web 面板（僅手動控制水泵）
+#### 方式 B：純 Web 面板（手動控制水泵 + 即時波形/頻譜）
 
 ```bash
 python -m pi.web_controller
 ```
+
+儀表板上的「**即時訊號**」卡片會每 2 秒更新一次 SpikerBox 的波形與頻譜圖，
+**不需要訓練好的模型**，可用來確認訊號擷取是否正常、觀察夾上植物前後的變化。
 
 #### 方式 C：純命令列模式（無 Web，適合自動排程）
 
@@ -316,8 +320,8 @@ python -m pi.main
 | 定時灌溉 | 設定秒數 → 點「開始定時」 |
 | 啟動 AI 自動監測 | 點「啟動監測」→ 系統自動錄音 + 推論 + 灌溉 |
 | 停止 AI 自動監測 | 點「停止監測」 |
-| 查看即時頻譜圖 | 啟動監測後自動顯示在「即時推論」區塊 |
-| 查看推論結果 | 即時推論區塊顯示 noise / normal / thirsty 機率條 |
+| 查看即時波形/頻譜 | 「即時訊號」卡片每 2 秒自動更新，不需模型 |
+| 查看 AI 推論結果 | 「即時推論」區塊顯示 noise / normal / thirsty 機率條（需模型 + 啟動監測） |
 | 查看活動日誌 | 底部「活動日誌」自動記錄每次操作 |
 | 查看資料集統計 | 系統資訊卡顯示已蒐集的資料筆數 |
 

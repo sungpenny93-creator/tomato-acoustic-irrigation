@@ -24,6 +24,16 @@ from flask import Flask, render_template, jsonify, request
 from pi.gpio_controller import GPIOController
 from pi.audio_capture import AudioCapture
 from pi.dataset_manager import DatasetManager
+from pi.spectro_render import (
+    wav_to_mono_float,
+    stats_text,
+    render_waveform_spectrogram_b64,
+)
+
+# 即時波形/頻譜圖設定（儀表板「即時訊號」卡片用，與 AI 模型無關）
+LIVE_SPECTRO_DURATION = 2.0     # 每段擷取秒數
+LIVE_SPECTRO_REFRESH = 2.0      # 每隔多久更新一次
+LIVE_SPECTRO_MAX_FREQ = 500     # 頻譜圖 y 軸上限(Hz)；植物電位都在低頻
 
 # ──────────────────────────────────────────────
 #  設定載入
@@ -98,10 +108,18 @@ system_state = {
     "latest_inference": None,
     "latest_spectrogram_b64": None,
     "inference_history": [],
+    # 即時波形/頻譜（永遠在跑，不需要模型）
+    "live_spectro_b64": None,
+    "live_spectro_stats": "",
+    "live_spectro_mode": "starting",
+    "live_spectro_ts": None,
 }
 state_lock = threading.Lock()
 monitor_thread = None
 monitor_stop_event = threading.Event()
+
+# 序列埠/音訊裝置一次只能給一個迴圈用，AI 監測和即時頻譜共用這把鎖
+capture_lock = threading.Lock()
 
 MAX_LOG_ENTRIES = 100
 MAX_HISTORY = 50
@@ -150,8 +168,9 @@ def _monitor_loop():
 
     while not monitor_stop_event.is_set():
         try:
-            # 1. 錄音
-            success = audio.record_audio(temp_wav)
+            # 1. 錄音（跟即時頻譜迴圈共用裝置，用鎖避免同時讀序列埠）
+            with capture_lock:
+                success = audio.record_audio(temp_wav)
             if not success:
                 add_log("錄音失敗", "等待下一次")
                 monitor_stop_event.wait(interval)
@@ -228,6 +247,35 @@ def _monitor_loop():
             os.remove(temp_wav_path)
         except Exception:
             pass
+
+
+# ──────────────────────────────────────────────
+#  即時波形/頻譜迴圈（背景常駐，與 AI 模型無關）
+# ──────────────────────────────────────────────
+def _spectro_loop():
+    """持續擷取短音訊 → 畫波形+頻譜圖 → 存進 system_state，供儀表板輪詢。"""
+    tmp_wav = os.path.join(os.path.dirname(__file__), "live_spectro.wav")
+    audio.duration = LIVE_SPECTRO_DURATION
+
+    while True:
+        try:
+            with capture_lock:
+                ok = audio.record_audio(tmp_wav)
+            if ok and os.path.isfile(tmp_wav):
+                x, sr = wav_to_mono_float(tmp_wav)
+                png = render_waveform_spectrogram_b64(x, sr, max_freq=LIVE_SPECTRO_MAX_FREQ)
+                stats = stats_text(x, sr)
+                with state_lock:
+                    system_state["live_spectro_b64"] = png
+                    system_state["live_spectro_stats"] = stats
+                    system_state["live_spectro_mode"] = audio.mode
+                    system_state["live_spectro_ts"] = datetime.now().strftime("%H:%M:%S")
+        except Exception as e:
+            _safe_print(f"[SPECTRO] 擷取失敗: {e}")
+        time.sleep(LIVE_SPECTRO_REFRESH)
+
+
+threading.Thread(target=_spectro_loop, daemon=True).start()
 
 
 # ──────────────────────────────────────────────
@@ -344,6 +392,18 @@ def inference_latest():
         return jsonify({
             "inference": system_state["latest_inference"],
             "spectrogram_b64": system_state["latest_spectrogram_b64"],
+        })
+
+
+@app.route("/api/spectro", methods=["GET"])
+def live_spectro():
+    """即時波形/頻譜圖（與 AI 模型無關，儀表板「即時訊號」卡片用）。"""
+    with state_lock:
+        return jsonify({
+            "png": system_state["live_spectro_b64"],
+            "stats_text": system_state["live_spectro_stats"],
+            "mode": system_state["live_spectro_mode"],
+            "ts": system_state["live_spectro_ts"],
         })
 
 

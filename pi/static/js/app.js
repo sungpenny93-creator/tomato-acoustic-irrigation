@@ -15,12 +15,14 @@ document.addEventListener("DOMContentLoaded", () => {
     fetchStatus();
     fetchLog();
     fetchInference();
+    fetchLiveSpectro();
     fetchDatasetStats();
     // 每 2 秒輪詢
     pollTimer = setInterval(() => {
         fetchStatus();
         fetchLog();
         fetchInference();
+        fetchLiveSpectro();
     }, 2000);
     // 資料集統計每 30 秒更新
     setInterval(fetchDatasetStats, 30000);
@@ -124,6 +126,32 @@ async function fetchInference() {
         updateProbBar("thirsty", probs.thirsty || 0);
         updateProbBar("noise", probs.noise || 0);
     }
+}
+
+// ──── 即時波形/頻譜圖（不需 AI 模型）────
+async function fetchLiveSpectro() {
+    const data = await apiCall("/api/spectro");
+    if (!data) return;
+
+    const img = document.getElementById("live-spectro-img");
+    const placeholder = document.getElementById("live-spectro-placeholder");
+    if (data.png) {
+        img.src = `data:image/png;base64,${data.png}`;
+        img.style.display = "block";
+        if (placeholder) placeholder.style.display = "none";
+    }
+
+    const modeEl = document.getElementById("live-spectro-mode");
+    if (modeEl) {
+        const label = data.mode === "mock" ? "⚠️ 模擬(無硬體)"
+            : data.mode === "serial" ? "序列埠"
+            : data.mode === "audio" ? "USB 音訊" : (data.mode || "—");
+        modeEl.textContent = data.ts ? `${label} · ${data.ts}` : label;
+        modeEl.className = "monitor-badge" + (data.mode === "mock" ? "" : " monitoring");
+    }
+
+    const statsEl = document.getElementById("live-spectro-stats");
+    if (statsEl) statsEl.textContent = data.stats_text || "";
 }
 
 function updateProbBar(name, value) {
