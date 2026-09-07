@@ -459,3 +459,8 @@ if __name__ == "__main__":
     finally:
         monitor_stop_event.set()
         gpio.cleanup()
+        # 主動關閉序列埠，否則下次啟動可能撞到 (5, 'Input/output error')
+        try:
+            audio.close()
+        except Exception:
+            pass
