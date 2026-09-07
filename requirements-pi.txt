@@ -1,19 +1,48 @@
 # ===========================================
 # 樹莓派端套件清單（推論與控制用）
-# 安裝方式：pip install -r requirements-pi.txt
+# ===========================================
+#
+# 安裝前置系統套件（只需執行一次）：
+#   sudo apt install -y portaudio19-dev libatlas-base-dev
+#
+# 建立虛擬環境並安裝：
+#   python3 -m venv venv --system-site-packages
+#   source venv/bin/activate
+#   pip install -r requirements-pi.txt
 # ===========================================
 
-# TFLite 推論引擎（比完整 TensorFlow 小很多）
-tflite-runtime>=2.13.0
+# AI 推論引擎
+# 注意：Pi 上無法安裝獨立的 tflite-runtime，改用完整 TensorFlow
+# inference.py 已有自動 fallback 機制
+tensorflow>=2.13.0
 
-# 即時音訊擷取
+# 即時音訊擷取（兩種後端都裝，sounddevice 為主要使用）
+sounddevice>=0.4.6
 pyaudio>=0.2.13
+
+# 音訊分析（頻譜圖生成）
+librosa>=0.10.0
+
+# 繪製頻譜圖（重要！librosa.display 和 src/spectrogram.py 都需要它）
+# 之前這裡漏掉了 matplotlib，會導致樹莓派上執行時出現
+# 「ModuleNotFoundError: No module named 'matplotlib'」
+# （在 preprocessor.py 的 try/except 裡會被攔截並印出診斷訊息）
+matplotlib>=3.7.0
 
 # 數值運算
 numpy>=1.24.0
 
-# 訊號處理（頻譜減法）
+# 訊號處理（頻譜減法抗噪）
 scipy>=1.10.0
 
-# GPIO 控制（Raspberry Pi 專用）
-# RPi.GPIO>=0.7.1  # 取消註解以在樹莓派上安裝
+# 圖片處理（頻譜圖 resize 給模型）
+Pillow>=9.0.0
+
+# GPIO 控制（Raspberry Pi 5 專用相容套件）
+rpi-lgpio>=0.6
+
+# 序列埠通訊（新版 Plant SpikerBox 使用 CDC ACM 協定）
+pyserial>=3.5
+
+# Web 遠端控制面板
+flask>=3.0.0

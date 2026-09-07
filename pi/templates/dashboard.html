@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌱 番茄灌溉控制面板</title>
+    <meta name="description" content="番茄生理聲學監測與自動化灌溉系統 — 遠端控制面板">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <!-- ─── 背景裝飾 ─── -->
+    <div class="bg-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <div class="app-container">
+        <!-- ─── 頂部標題 ─── -->
+        <header class="app-header">
+            <div class="header-left">
+                <h1 id="app-title">🌱 番茄灌溉系統</h1>
+                <p class="subtitle">遠端控制面板 — Raspberry Pi</p>
+            </div>
+            <div class="header-right">
+                <div class="connection-badge" id="connection-badge">
+                    <span class="dot"></span>
+                    <span class="label">已連線</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- ─── 主內容區 ─── -->
+        <main class="dashboard">
+            <!-- ── 水泵狀態 ── -->
+            <section class="card card-status" id="status-card">
+                <div class="card-header">
+                    <h2>水泵狀態</h2>
+                </div>
+                <div class="pump-visual">
+                    <div class="pump-ring" id="pump-ring">
+                        <div class="pump-icon" id="pump-icon">💧</div>
+                    </div>
+                    <p class="pump-label" id="pump-label">已停止</p>
+                </div>
+            </section>
+
+            <!-- ── 控制面板 ── -->
+            <section class="card card-control">
+                <div class="card-header">
+                    <h2>手動控制</h2>
+                </div>
+                <div class="control-buttons">
+                    <button class="btn btn-on" id="btn-on" onclick="pumpOn()">
+                        <span class="btn-icon">▶</span> 啟動水泵
+                    </button>
+                    <button class="btn btn-off" id="btn-off" onclick="pumpOff()">
+                        <span class="btn-icon">■</span> 停止水泵
+                    </button>
+                </div>
+
+                <div class="divider"></div>
+
+                <div class="cycle-control">
+                    <h3>定時灌溉</h3>
+                    <div class="cycle-row">
+                        <div class="duration-input-group">
+                            <button class="btn-stepper" onclick="adjustDuration(-1)">−</button>
+                            <input type="number" id="duration-input" value="5" min="1" max="300">
+                            <button class="btn-stepper" onclick="adjustDuration(1)">+</button>
+                            <span class="unit">秒</span>
+                        </div>
+                        <button class="btn btn-cycle" onclick="pumpCycle()">
+                            <span class="btn-icon">⟳</span> 開始定時
+                        </button>
+                    </div>
+                    <div class="countdown-bar" id="countdown-bar">
+                        <div class="countdown-fill" id="countdown-fill"></div>
+                        <span class="countdown-text" id="countdown-text">0s</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── AI 監測控制 ── -->
+            <section class="card card-monitor">
+                <div class="card-header">
+                    <h2>AI 自動監測</h2>
+                    <span class="monitor-badge" id="monitor-badge">未啟動</span>
+                </div>
+                <p class="monitor-desc">
+                    啟動後系統會自動錄音 → 生成頻譜圖 → AI 推論 → 判定缺水時自動澆灌
+                </p>
+                <div class="control-buttons" style="margin-top: 14px;">
+                    <button class="btn btn-on" id="btn-monitor-start" onclick="monitorStart()">
+                        <span class="btn-icon">▶</span> 啟動監測
+                    </button>
+                    <button class="btn btn-off" id="btn-monitor-stop" onclick="monitorStop()">
+                        <span class="btn-icon">■</span> 停止監測
+                    </button>
+                </div>
+            </section>
+
+            <!-- ── 即時頻譜圖 + 推論結果 ── -->
+            <section class="card card-inference">
+                <div class="card-header">
+                    <h2>即時推論</h2>
+                </div>
+                <div class="inference-content">
+                    <div class="spectrogram-container">
+                        <img id="spectrogram-img" src="" alt="尚無頻譜圖" class="spectrogram-img">
+                        <p class="spectrogram-placeholder" id="spectrogram-placeholder">
+                            啟動監測後將顯示即時頻譜圖
+                        </p>
+                    </div>
+                    <div class="inference-result" id="inference-result">
+                        <div class="inference-prediction">
+                            <span class="inference-label" id="inference-label">—</span>
+                            <span class="inference-confidence" id="inference-confidence">0%</span>
+                        </div>
+                        <div class="prob-bars">
+                            <div class="prob-row">
+                                <span class="prob-name">🌿 正常</span>
+                                <div class="prob-track"><div class="prob-fill prob-normal" id="prob-normal" style="width:0%"></div></div>
+                                <span class="prob-val" id="prob-normal-val">0%</span>
+                            </div>
+                            <div class="prob-row">
+                                <span class="prob-name">🔥 缺水</span>
+                                <div class="prob-track"><div class="prob-fill prob-thirsty" id="prob-thirsty" style="width:0%"></div></div>
+                                <span class="prob-val" id="prob-thirsty-val">0%</span>
+                            </div>
+                            <div class="prob-row">
+                                <span class="prob-name">📢 噪音</span>
+                                <div class="prob-track"><div class="prob-fill prob-noise" id="prob-noise" style="width:0%"></div></div>
+                                <span class="prob-val" id="prob-noise-val">0%</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── 系統資訊 ── -->
+            <section class="card card-info">
+                <div class="card-header">
+                    <h2>系統資訊</h2>
+                </div>
+                <div class="info-grid">
+                    <div class="info-item">
+                        <span class="info-label">GPIO 腳位</span>
+                        <span class="info-value" id="info-pin">GPIO —</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">累計灌溉次數</span>
+                        <span class="info-value" id="info-cycles">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">上次灌溉</span>
+                        <span class="info-value" id="info-last">尚未灌溉</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">系統運行時間</span>
+                        <span class="info-value" id="info-uptime">0 秒</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">資料集筆數</span>
+                        <span class="info-value" id="info-dataset">0</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-label">頻譜圖數</span>
+                        <span class="info-value" id="info-spectrograms">0</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ── 活動日誌 ── -->
+            <section class="card card-log">
+                <div class="card-header">
+                    <h2>活動日誌</h2>
+                    <button class="btn-icon-only" onclick="clearLog()" title="清除日誌">🗑️</button>
+                </div>
+                <ul class="log-list" id="log-list">
+                    <li class="log-empty">載入中...</li>
+                </ul>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            番茄生理聲學監測與自動化灌溉系統 &copy; 2026
+        </footer>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

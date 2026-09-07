@@ -42,6 +42,55 @@ def audio_to_mel_spectrogram(y: np.ndarray, sr: int) -> np.ndarray:
     if len(y) < Config.N_FFT:
         y = np.pad(y, (0, Config.N_FFT - len(y)), mode="constant")
 
+    # ------------------------------------------------------------------
+    # 重要防呆：奈奎斯特頻率 (Nyquist frequency) 檢查
+    # ------------------------------------------------------------------
+    # Config.FMIN=20000Hz、FMAX=100000Hz 是根據 Khait et al. (2023)
+    # 論文的錄音設備所設定的（原始資料取樣率高達 250kHz，
+    # 奈奎斯特頻率 = 250000/2 = 125kHz，所以看得到 20kHz~100kHz 的
+    # 氣穴超音波訊號）。
+    #
+    # 但是！Plant SpikerBox 實際錄音的取樣率通常只有 10000Hz 左右
+    # （見 pi/config.json 的 audio.sample_rate），根據取樣定理，
+    # 這種訊號最高只能還原到「奈奎斯特頻率 = sr / 2」的頻率內容，
+    # 也就是最多只有 5000Hz！
+    #
+    # 如果 fmin(20000) 已經超過奈奎斯特頻率，等於是在要求
+    # librosa 畫出一段「這個取樣率下根本不可能存在」的頻段，
+    # 算出來的 Mel 濾波器組會全部落在有效頻率之外，導致：
+    #   - 產生的 mel_spec 幾乎全部是極小值/全黑一片（沒有任何資訊）
+    #   - 模型看到的頻譜圖等於是「空白圖片」，永遠學不會分辨
+    #     thirsty / normal / noise，準確率會長期異常低落
+    #   - librosa 通常還會跳出 UserWarning: "Empty filters detected"
+    #
+    # 這裡加上自動防呆：如果設定的 fmin/fmax 超出目前這筆音訊
+    # 實際的奈奎斯特頻率，就自動退回「這個取樣率下可用的全部頻寬」
+    # (0 ~ sr/2)，並印出警告，讓你能立刻發現「這筆音訊的取樣率
+    # 涵蓋不到原本設計的氣穴頻段」，需要回頭檢查硬體/設定是否正確
+    # （例如：SpikerBox 的取樣率設定太低、或訓練資料與實際部署
+    # 用的頻段假設不一致，這兩者必須對齊才能讓模型真正有效）。
+    nyquist = sr / 2.0
+    fmin = Config.FMIN
+    fmax = Config.FMAX
+
+    if fmin >= nyquist:
+        print(
+            f"[WARNING] 取樣率 {sr}Hz 的奈奎斯特頻率只有 {nyquist:.0f}Hz，"
+            f"低於設定的 FMIN={fmin}Hz，原本設計的氣穴頻段完全錄不到！"
+            f"已自動改用 0~{nyquist:.0f}Hz 的全頻寬，但這通常代表訓練資料"
+            f"（高取樣率）與實際部署裝置（低取樣率）的頻段假設不一致，"
+            f"建議檢查 SpikerBox 取樣率設定或改用符合此取樣率重新訓練的模型。"
+        )
+        fmin = 0
+        fmax = nyquist
+    elif fmax > nyquist:
+        # fmin 還在可用範圍內，但 fmax 超過了，只需把上限夾回奈奎斯特頻率
+        print(
+            f"[WARNING] FMAX={fmax}Hz 超過取樣率 {sr}Hz 的奈奎斯特頻率 "
+            f"({nyquist:.0f}Hz)，已自動夾到 {nyquist:.0f}Hz。"
+        )
+        fmax = nyquist
+
     # 計算 Mel-Spectrogram
     mel_spec = librosa.feature.melspectrogram(
         y=y,
@@ -49,8 +98,8 @@ def audio_to_mel_spectrogram(y: np.ndarray, sr: int) -> np.ndarray:
         n_fft=Config.N_FFT,
         hop_length=Config.HOP_LENGTH,
         n_mels=Config.N_MELS,
-        fmin=Config.FMIN,     # 只關注 20kHz 以上（氣穴頻段）
-        fmax=Config.FMAX,     # 上限 100kHz
+        fmin=fmin,             # 已依實際取樣率做過奈奎斯特頻率防呆
+        fmax=fmax,              # 已依實際取樣率做過奈奎斯特頻率防呆
     )
 
     # 轉換為 dB 刻度（人類聽覺是對數感知的）

@@ -1,9 +1,26 @@
 {
     "model_path": "models/best_model.tflite",
     "audio": {
-        "sample_rate": 500000,
+        "sample_rate": 44100,
         "duration_seconds": 1.0,
         "listen_interval_seconds": 300
+    },
+    "spikerbox": {
+        "device_keywords": [
+            "SpikerBox",
+            "Backyard",
+            "Digital Audio",
+            "USB Audio"
+        ],
+        "fallback_device": null,
+        "sample_rate": 44100,
+        "channels": 1
+    },
+    "dataset": {
+        "enabled": true,
+        "save_dir": "data/spikerbox_raw",
+        "spectrogram_dir": "data/spikerbox_spectrograms",
+        "max_files_per_day": 500
     },
     "gpio": {
         "relay_pin": 17,
@@ -12,5 +29,15 @@
     "logic": {
         "thirsty_threshold": 0.85,
         "consecutive_thirsty_required": 2
+    },
+    "soil": {
+        "do_pin": 23,
+        "power_pin": null,
+        "dry_is_high": true,
+        "read_interval_seconds": 300,
+        "consecutive_dry_required": 3,
+        "irrigation_duration_seconds": 5,
+        "cooldown_seconds": 1800,
+        "min_temp_c": 5.0
     }
 }

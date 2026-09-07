@@ -54,6 +54,9 @@ Desktop.ini
 logs/
 *.log
 output_images/
+pi/diag_output/
+pi/live_audio.wav
+pi/live_spectro.wav
 
 # ===========================
 # 發布用打包檔

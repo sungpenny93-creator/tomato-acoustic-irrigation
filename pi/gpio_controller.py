@@ -1,6 +1,14 @@
 import time
 import sys
 
+
+def _safe_print(msg: str):
+    """跨平台安全 print，避免 Windows CP950 遇到 emoji 噴錯"""
+    try:
+        print(msg)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", "replace").decode("ascii"))
+
 # 嘗試載入樹莓派專用的 GPIO 套件
 try:
     import RPi.GPIO as GPIO
@@ -31,17 +39,17 @@ class GPIOController:
         """開啟繼電器（啟動馬達）"""
         if self.is_rpi:
             GPIO.output(self.relay_pin, GPIO.HIGH)
-            print(f"[GPIO] 繼電器 ON (Pin {self.relay_pin}) - 馬達運轉中 💦")
+            _safe_print(f"[GPIO] 繼電器 ON (Pin {self.relay_pin}) - 馬達運轉中 💦")
         else:
-            print(f"[MOCK] 繼電器 ON (Pin {self.relay_pin}) - 模擬馬達運轉中 💦")
+            _safe_print(f"[MOCK] 繼電器 ON (Pin {self.relay_pin}) - 模擬馬達運轉中 💦")
 
     def turn_off_relay(self):
         """關閉繼電器（停止馬達）"""
         if self.is_rpi:
             GPIO.output(self.relay_pin, GPIO.LOW)
-            print(f"[GPIO] 繼電器 OFF (Pin {self.relay_pin}) - 馬達已停止 🛑")
+            _safe_print(f"[GPIO] 繼電器 OFF (Pin {self.relay_pin}) - 馬達已停止 🛑")
         else:
-            print(f"[MOCK] 繼電器 OFF (Pin {self.relay_pin}) - 模擬馬達已停止 🛑")
+            _safe_print(f"[MOCK] 繼電器 OFF (Pin {self.relay_pin}) - 模擬馬達已停止 🛑")
 
     def run_irrigation_cycle(self, duration_seconds: int):
         """執行一次完整的灌溉週期"""
