@@ -281,6 +281,35 @@ scp models/best_model.tflite pi@<IP>:~/tomato-acoustic-irrigation/models/
 
 ### 4. 啟動系統（樹莓派端）
 
+#### ⚡ 開機後快速啟動（每次樹莓派重開機照這 4 步）
+
+```bash
+# 1. 在電腦上 SSH 連進樹莓派（IP 依實際情況，可在路由器後台或接螢幕查）
+ssh penny@192.168.0.6
+
+# 2. 進專案並啟用虛擬環境
+cd ~/tomato-acoustic-irrigation && source venv/bin/activate
+
+# 3. 確認 SpikerBox 有被認到
+ls /dev/ttyACM*
+#   → 有 /dev/ttyACM0    ：繼續下一步
+#   → No such file...    ：拔掉 SpikerBox USB、等 10 秒、插回，再打一次這行
+
+# 4. 啟動（擇一，見下方方式 A / B / C）
+python -m pi.web_controller
+```
+
+啟動後看到 `★ 成功連接 Plant SpikerBox: /dev/ttyACM0` 就對了，
+手機/電腦打開 `http://<樹莓派IP>:5000`，第一次開記得**強制重新整理**（`Ctrl+Shift+R`）。
+停止按 `Ctrl+C`（新版會在關閉時自動釋放序列埠）。
+
+> **常見狀況**
+> - `Input/output error` 或 `ls /dev/ttyACM*` 找不到裝置 → 多半是上次沒關乾淨或 USB 卡住。
+>   先 `pkill -f "pi.web_controller"; pkill -f "pi.spectro_web"; pkill -f "pi.monitor"`，
+>   再 `sudo fuser -k /dev/ttyACM0`，還是不行就拔插 USB 或重開機。
+> - 頁面顯示 `mock` / 一直「產生靜音測試」→ 代表沒抓到硬體，回到第 3 步。
+> - 只想看波形/頻譜、不跑 AI → 用方式 B。
+
 #### 方式 A：完整模式（推薦）— Web 面板 + AI 監測
 
 ```bash
