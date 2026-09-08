@@ -15,7 +15,7 @@ import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from pi.web_controller import app, gpio, audio, monitor_stop_event, _safe_print, config
+from pi.web_controller import app, shutdown, _safe_print, config
 
 
 def main():
@@ -38,12 +38,7 @@ def main():
     except KeyboardInterrupt:
         _safe_print("\n系統關閉中...")
     finally:
-        monitor_stop_event.set()
-        gpio.cleanup()
-        try:
-            audio.close()
-        except Exception:
-            pass
+        shutdown()
         _safe_print("系統已安全關閉。")
 
 

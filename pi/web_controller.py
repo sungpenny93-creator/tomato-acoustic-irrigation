@@ -121,6 +121,10 @@ monitor_stop_event = threading.Event()
 # 序列埠/音訊裝置一次只能給一個迴圈用，AI 監測和即時頻譜共用這把鎖
 capture_lock = threading.Lock()
 
+# 即時頻譜背景執行緒的停止旗標（關閉時要先讓它停，否則直譯器 finalize 時 C 擴充會崩潰）
+spectro_stop_event = threading.Event()
+_spectro_thread = None
+
 MAX_LOG_ENTRIES = 100
 MAX_HISTORY = 50
 
@@ -257,9 +261,11 @@ def _spectro_loop():
     tmp_wav = os.path.join(os.path.dirname(__file__), "live_spectro.wav")
     audio.duration = LIVE_SPECTRO_DURATION
 
-    while True:
+    while not spectro_stop_event.is_set():
         try:
             with capture_lock:
+                if spectro_stop_event.is_set():
+                    break
                 ok = audio.record_audio(tmp_wav)
             if ok and os.path.isfile(tmp_wav):
                 x, sr = wav_to_mono_float(tmp_wav)
@@ -272,10 +278,28 @@ def _spectro_loop():
                     system_state["live_spectro_ts"] = datetime.now().strftime("%H:%M:%S")
         except Exception as e:
             _safe_print(f"[SPECTRO] 擷取失敗: {e}")
-        time.sleep(LIVE_SPECTRO_REFRESH)
+        spectro_stop_event.wait(LIVE_SPECTRO_REFRESH)
 
 
-threading.Thread(target=_spectro_loop, daemon=True).start()
+_spectro_thread = threading.Thread(target=_spectro_loop, daemon=True)
+_spectro_thread.start()
+
+
+def shutdown():
+    """乾淨關閉：先讓背景執行緒停下並 join，再關硬體。
+    否則主程式退出、直譯器 finalize 時，背景執行緒還在 numpy/matplotlib 的
+    C 程式碼裡 → Fatal Python error: PyThreadState_Get ... GIL ... finalizing。
+    """
+    spectro_stop_event.set()
+    monitor_stop_event.set()
+    for t in (_spectro_thread, monitor_thread):
+        if t is not None and t.is_alive():
+            t.join(timeout=6)
+    gpio.cleanup()
+    try:
+        audio.close()
+    except Exception:
+        pass
 
 
 # ──────────────────────────────────────────────
@@ -456,11 +480,8 @@ if __name__ == "__main__":
 
     try:
         app.run(host="0.0.0.0", port=5000, debug=False)
+    except KeyboardInterrupt:
+        pass
     finally:
-        monitor_stop_event.set()
-        gpio.cleanup()
-        # 主動關閉序列埠，否則下次啟動可能撞到 (5, 'Input/output error')
-        try:
-            audio.close()
-        except Exception:
-            pass
+        shutdown()
+        _safe_print("系統已安全關閉。")
