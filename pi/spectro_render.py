@@ -66,7 +66,7 @@ def render_waveform_spectrogram_b64(x: np.ndarray, sr: int,
                                    noverlap=int(nperseg * 0.75))
     Sxx_db = 10.0 * np.log10(Sxx + 1e-12)
 
-    fig, ax = plt.subplots(2, 1, figsize=(9, 5),
+    fig, ax = plt.subplots(2, 1, figsize=(11, 6),
                            gridspec_kw={"height_ratios": [1, 2]})
     ax[0].plot(t_axis, x, lw=0.5, color="#2b8")
     ax[0].set_xlim(0, t_axis[-1] if n else 1)

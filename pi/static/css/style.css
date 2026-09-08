@@ -823,6 +823,24 @@ body {
     grid-column: 1 / -1;
 }
 
+/* ─── 即時訊號卡片（波形/頻譜圖放大）─── */
+.card-live-spectro {
+    grid-column: 1 / -1;
+}
+
+.card-live-spectro .spectrogram-container {
+    flex: none;
+    width: 100%;
+    max-width: 1000px;
+    margin: 12px auto 0;
+    min-height: 340px;
+}
+
+.card-live-spectro .spectrogram-img {
+    width: 100%;
+    max-width: 1000px;
+}
+
 .inference-content {
     display: flex;
     gap: 24px;
