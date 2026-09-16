@@ -210,6 +210,9 @@ tomato-acoustic-irrigation/
 ├── models/                     # 🧠 訓練好的模型
 │   └── best_model.tflite       #   量化後的 TFLite 模型
 │
+├── deploy/                      # 🔌 部署設定
+│   └── tomato.service           #   systemd 服務檔（開機自動啟動，見下方說明）
+│
 ├── requirements-pc.txt         # 電腦端套件
 └── requirements-pi.txt         # 樹莓派端套件（含 Flask）
 ```
@@ -309,6 +312,47 @@ python -m pi.web_controller
 >   再 `sudo fuser -k /dev/ttyACM0`，還是不行就拔插 USB 或重開機。
 > - 頁面顯示 `mock` / 一直「產生靜音測試」→ 代表沒抓到硬體，回到第 3 步。
 > - 只想看波形/頻譜、不跑 AI → 用方式 B。
+
+#### 🔌 開機自動啟動（免螢幕/鍵盤，適合帶到植物旁邊量測）
+
+上面 4 步是每次都要 SSH 進去手動打指令。如果你要帶樹莓派去量番茄、身邊沒有螢幕鍵盤，
+設定成 **systemd 服務**：插電開機後系統自動啟動，手機直接連網頁看，不用打任何指令。
+
+**在樹莓派上設定一次即可：**
+
+```bash
+cd ~/tomato-acoustic-irrigation
+sudo cp deploy/tomato.service /etc/systemd/system/tomato.service
+sudo systemctl daemon-reload
+sudo systemctl enable tomato.service   # 設成開機自動啟動
+sudo systemctl start tomato.service    # 現在就啟動一次，不用重開機
+```
+
+> `deploy/tomato.service` 裡預設帳號是 `penny`、路徑是 `/home/penny/tomato-acoustic-irrigation`。
+> 如果你的不一樣，先用 `nano deploy/tomato.service` 改好 `User=` 和路徑再 `cp`。
+
+**之後怎麼看有沒有跑、看記錄：**
+
+```bash
+sudo systemctl status tomato.service   # 看是不是 active (running)
+sudo journalctl -u tomato.service -f   # 即時看 log（跟直接跑程式看到的畫面一樣），Ctrl+C 離開
+```
+
+**手動除錯時要先停掉服務**，不然兩邊搶 SpikerBox 序列埠會撞到 `Input/output error`：
+
+```bash
+sudo systemctl stop tomato.service     # 暫停，之後想除錯 python -m pi.web_controller 再用
+sudo systemctl start tomato.service    # 除錯完，恢復自動運作
+sudo systemctl disable tomato.service  # 不想開機自動啟動了，取消
+```
+
+**沒有螢幕怎麼知道樹莓派的網址？** 用 mDNS 主機名稱，不用每次查 IP（Raspberry Pi OS 預設就有支援）：
+
+```
+http://raspberrypi.local:5000
+```
+
+（如果打不開，樹莓派上執行 `sudo apt install -y avahi-daemon` 後重開機；或者去路由器後台把樹莓派設成固定 IP，網址就永遠不會變）
 
 #### 方式 A：完整模式（推薦）— Web 面板 + AI 監測
 

@@ -1,0 +1,38 @@
+# systemd 服務檔 — 讓樹莓派「一插電開機」就自動啟動系統
+# ==========================================================
+# 不需要接螢幕、鍵盤，也不需要 SSH 進去手動打指令。
+#
+# 安裝方式（在樹莓派上執行，完整步驟見 README「開機自動啟動」章節）：
+#   sudo cp deploy/tomato.service /etc/systemd/system/tomato.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable tomato.service   # 設成開機自動啟動
+#   sudo systemctl start tomato.service    # 現在就啟動一次
+#
+# ⚠️ 如果你的使用者帳號不是 penny，或專案路徑不是
+#    /home/penny/tomato-acoustic-irrigation，
+#    User= 和 WorkingDirectory= / ExecStart= 裡的路徑要跟著改。
+#
+# ⚠️ 這個服務會一直佔用 SpikerBox 的序列埠。如果你要手動用
+#    python -m pi.web_controller 除錯測試，要先
+#    sudo systemctl stop tomato.service
+#    不然兩邊搶序列埠會撞成 (5, 'Input/output error')（我們之前遇過的那個）。
+
+[Unit]
+Description=Tomato Acoustic Irrigation System (Web Dashboard + Live Signal)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=penny
+WorkingDirectory=/home/penny/tomato-acoustic-irrigation
+ExecStart=/home/penny/tomato-acoustic-irrigation/venv/bin/python -m pi.monitor
+Restart=on-failure
+RestartSec=5
+# 開機當下 USB 裝置可能還沒枚舉完成，先等幾秒再啟動，減少抓不到 SpikerBox 的機率
+ExecStartPre=/bin/sleep 5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
