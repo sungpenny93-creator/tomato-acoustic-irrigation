@@ -64,3 +64,6 @@ pi/live_spectro.wav
 dist/
 build/
 *.egg-info/
+
+# 本機 IDE 設定（機器相關，不該進版本控制）
+*.code-workspace
