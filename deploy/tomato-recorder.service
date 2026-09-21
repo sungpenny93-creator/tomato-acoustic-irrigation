@@ -1,0 +1,51 @@
+# systemd 服務檔 — 長期連續錄音（資料蒐集實驗用）
+# ==================================================
+# 讓錄音器在背景跑好幾天，SSH 斷線、關電腦都不會中斷，
+# 樹莓派若因停電重開機，也會自動接著錄。
+#
+# ⚠️ 這個服務跟 tomato.service（網頁面板）會搶 SpikerBox 的序列埠，
+#    所以下面設了 Conflicts=tomato.service：
+#    啟動這個服務時，systemd 會自動把 tomato.service 停掉，
+#    不用你手動先停，也不會兩邊打架。
+#
+# 安裝（只要做一次）：
+#   sudo cp deploy/tomato-recorder.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#
+# 開始錄（實驗開始時）：
+#   sudo systemctl enable --now tomato-recorder.service
+#
+# 停止錄（實驗結束時）：
+#   sudo systemctl disable --now tomato-recorder.service
+#   sudo systemctl start tomato.service      # 恢復網頁面板
+#
+# 看進度：
+#   sudo journalctl -u tomato-recorder.service -f
+#
+# ⚠️ 如果你的帳號不是 penny、或路徑不同，記得改 User= 和底下的路徑。
+#
+# 想調整錄音參數，改 ExecStart 最後面那幾個選項：
+#   --duration 5     每次錄 5 秒
+#   --interval 300   每 5 分鐘錄一次
+#   --days 5         錄滿 5 天自動停（拿掉就一直錄到你手動停）
+#   --note "..."     備註，會寫進 CSV
+
+[Unit]
+Description=Tomato SpikerBox Continuous Recorder (data collection)
+After=network-online.target
+Wants=network-online.target
+Conflicts=tomato.service
+
+[Service]
+Type=simple
+User=penny
+WorkingDirectory=/home/penny/tomato-acoustic-irrigation
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/penny/tomato-acoustic-irrigation/venv/bin/python -m pi.recorder --duration 5 --interval 300 --note "5day-drought-experiment"
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
