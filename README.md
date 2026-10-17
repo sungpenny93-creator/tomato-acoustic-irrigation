@@ -287,8 +287,9 @@ scp models/best_model.tflite pi@<IP>:~/tomato-acoustic-irrigation/models/
 #### ⚡ 開機後快速啟動（每次樹莓派重開機照這 4 步）
 
 ```bash
-# 1. 在電腦上 SSH 連進樹莓派（IP 依實際情況，可在路由器後台或接螢幕查）
-ssh penny@192.168.0.6
+# 1. 在電腦上 SSH 連進樹莓派
+#    用主機名稱連，IP 換了也找得到；連不上看下方「連不上樹莓派」
+ssh penny@penny.local
 
 # 2. 進專案並啟用虛擬環境
 cd ~/tomato-acoustic-irrigation && source venv/bin/activate
@@ -312,6 +313,60 @@ python -m pi.web_controller
 >   再 `sudo fuser -k /dev/ttyACM0`，還是不行就拔插 USB 或重開機。
 > - 頁面顯示 `mock` / 一直「產生靜音測試」→ 代表沒抓到硬體，回到第 3 步。
 > - 只想看波形/頻譜、不跑 AI → 用方式 B。
+
+#### 🌐 連不上樹莓派（SSH 逾時 / IP 變了）
+
+**症狀**：`ssh penny@<舊IP>` 出現 `Connection timed out`。
+用 `ping <舊IP>` 如果看到「回覆自 **你自己電腦的 IP**：目的地主機無法連線」，那不是樹莓派回的，
+是 Windows 在說「這個區網裡沒人應答」，也就是樹莓派不在那個 IP 上（沒開機、沒連上 Wi-Fi，或 IP 被換掉）。
+
+**為什麼 IP 會換**：樹莓派的 IP 是路由器用 DHCP 臨時「借」的，有租約時間
+（TOTOLINK 預設 480 分鐘 = 8 小時）。樹莓派關機/離線超過租約，舊 IP 可能被別的裝置佔走，
+下次開機路由器就發另一個空的給它。
+
+**怎麼找回它**（依序試）：
+
+```bash
+ssh penny@penny.local          # 1. 用主機名稱，不用知道 IP（電腦上通常可用）
+ping -4 penny.local            # 2. 強制 IPv4，畫面會顯示它現在的 192.168.x.x
+arp -a                         # 3. 列出區網裝置，找 MAC 開頭 b8-27-eb / dc-a6-32 / e4-5f-01 / d8-3a-dd / 28-cd-c1 / 2c-cf-67
+```
+
+4. 登入路由器後台看「DHCP 用戶端列表」有沒有 `penny`。路由器位址是 Windows `ipconfig` 的「預設閘道」
+   （不一定是 `192.168.0.1`；TOTOLINK 為 `http://192.168.0.1` 或 `http://itotolink.net`，要用 `http` 不是 `https`；
+   TOTOLINK 路徑：進階設定 → 網路設定 → DHCP與ARP列表）。
+5. 都找不到：接螢幕+鍵盤到樹莓派，登入後 `hostname -I`；空白代表 Wi-Fi 沒連上（換過路由器/密碼要重設）。
+
+連進去後 `hostname -I` 可看目前 IP，儀表板網址是 `http://<該IP>:5000`
+（手機常不認 `.local`，要用 IP）。
+
+**避免 IP 一直變 — 在樹莓派設定固定 IP**（以 NetworkManager / `nmcli` 為例）
+
+> 有些路由器（例如這台 TOTOLINK 韌體）**沒有**「靜態 DHCP / 位址保留」，所以改在樹莓派端設定。
+> 固定 IP 要挑**在路由器 DHCP 範圍之外**的位址（TOTOLINK 範圍在「網路設定 → 區域網路設定」，
+> 例如發放 `192.168.0.2 ~ 250` 就選 `192.168.0.251`），避免和別的裝置衝突。
+
+```bash
+# 1. 查你正在用的 Wi-Fi「連線名稱」（TYPE 為 wifi、DEVICE 為 wlan0 那列的 NAME）
+nmcli con show --active
+
+# 2. 設定固定 IP —— 把 <連線名稱> 換成上一步看到的名稱（不要直接貼，名稱錯會報 unknown connection）
+sudo nmcli con mod "<連線名稱>" ipv4.method manual ipv4.addresses 192.168.0.251/24 ipv4.gateway 192.168.0.1 ipv4.dns "192.168.0.1 8.8.8.8"
+
+# 3. 確認有寫進去（要看到 manual 和 192.168.0.251/24）
+nmcli -g ipv4.method,ipv4.addresses con show "<連線名稱>"
+```
+
+確認無誤後**再**單獨執行 `sudo reboot`，開機約 1 分鐘後用 `ssh penny@192.168.0.251` 連線。
+（不要把 `sudo reboot` 跟上面指令一起貼，前面失敗時它仍會照跑。）
+
+改回自動取得 IP：
+```bash
+sudo nmcli con mod "<連線名稱>" ipv4.method auto ipv4.addresses "" ipv4.gateway "" ipv4.dns ""
+```
+
+輔助做法：路由器「區域網路設定」把 **DHCP 租約時間** 拉長（TOTOLINK 最大 10080 分鐘 = 7 天），
+短時間關機通常還會拿到同一個 IP，但離線太久仍可能換，所以只能輔助。
 
 #### 🔌 開機自動啟動（免螢幕/鍵盤，適合帶到植物旁邊量測）
 
