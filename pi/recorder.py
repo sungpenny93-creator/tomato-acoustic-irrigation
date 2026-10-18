@@ -105,23 +105,72 @@ def signal_stats(wav_path: str) -> dict:
     return {"sample_rate": int(sr), "rms": rms, "peak_hz": peak_hz, "clip_pct": clip_pct}
 
 
-def quality_flag(st: dict) -> str:
-    """把統計數字翻成一個好讀的品質標記，方便事後 grep。"""
+#  相對基準的漂移門檻：掉到基準的一半以下 / 漲到兩倍以上就示警
+RMS_DROP_RATIO = 0.5
+RMS_JUMP_RATIO = 2.0
+BASELINE_SAMPLES = 10          # 用前幾筆的中位數當基準
+
+
+def quality_flag(st: dict, baseline_rms: float = None) -> str:
+    """
+    把統計數字翻成一個好讀的品質標記，方便事後 grep。
+
+    判斷順序（由嚴重到輕微）：
+      1. CLIPPED / TOO_WEAK  — 絕對門檻，一定是壞的
+      2. RMS_DROP / RMS_JUMP — 相對「本次錄音基準」的漂移
+      3. HUM_HEAVY           — 市電雜訊主導（環境問題，資料通常還能用）
+
+    為什麼要有第 2 項：
+      絕對門檻抓不到「訊號正在死掉」。實測遇過電池快沒電時 RMS 從 0.154
+      掉到 0.037（剩 1/4），但因為還沒低於 TOO_WEAK 的 0.005、主頻也剛好
+      跑出 45~65Hz 的哼聲範圍，結果被標成「OK」—— 訊號在死掉卻顯示正常，
+      非常誤導。改成跟「這次錄音自己的基準」比，才抓得到這種衰退。
+    """
+    rms = st["rms"]
+
+    # 1. 絕對門檻：硬性失效
     if st["clip_pct"] > 1.0:
         return "CLIPPED"        # 爆表，電極亂跳或增益太大
-    if st["rms"] < 0.005:
-        return "TOO_WEAK"       # 太弱，接觸不良
-    if 45 <= st["peak_hz"] <= 65 and st["rms"] > 0.1:
+    if rms < 0.005:
+        return "TOO_WEAK"       # 太弱，接觸不良或裝置掉線
+
+    # 2. 相對基準的漂移：抓電池衰退、電極鬆脫
+    if baseline_rms and baseline_rms > 0:
+        ratio = rms / baseline_rms
+        if ratio < RMS_DROP_RATIO:
+            return "RMS_DROP"   # 訊號正在衰退（電池沒電？電極鬆了？）
+        if ratio > RMS_JUMP_RATIO:
+            return "RMS_JUMP"   # 突然暴增（電極碰到東西？接觸改變？）
+
+    # 3. 環境雜訊：不是故障，只是提醒接地可以更好
+    if 45 <= st["peak_hz"] <= 65 and rms > 0.1:
         return "HUM_HEAVY"      # 市電哼聲主導，接地沒做好
+
     return "OK"
 
 
 # ─── CSV 記錄 ───────────────────────────────────────
 CSV_FIELDS = ["timestamp", "filename", "label", "duration_s", "sample_rate",
-              "rms", "peak_hz", "clip_pct", "quality", "mode", "note"]
+              "rms", "rms_ratio", "peak_hz", "clip_pct", "quality", "mode", "note"]
 
 
 def append_csv(csv_path: str, row: dict):
+    """
+    附加一列到 CSV。若既有檔案的欄位跟現在的 CSV_FIELDS 不一致
+    （例如程式更新過、新增了欄位），先把舊檔改名備份再開新的，
+    避免新舊欄位混在同一個檔案裡導致欄位錯位。
+    """
+    if os.path.isfile(csv_path):
+        try:
+            with open(csv_path, "r", encoding="utf-8") as fh:
+                old_header = fh.readline().strip().split(",")
+            if old_header != CSV_FIELDS:
+                backup = csv_path + ".old"
+                os.replace(csv_path, backup)
+                _safe_print(f"[RECORDER] CSV 欄位已更新，舊檔備份為 {os.path.basename(backup)}")
+        except Exception:
+            pass
+
     is_new = not os.path.isfile(csv_path)
     with open(csv_path, "a", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(fh, fieldnames=CSV_FIELDS)
@@ -156,6 +205,11 @@ def run(duration: float, interval: float, label: str, note: str,
     bad_count = 0
     started = datetime.now()
 
+    # 基準 RMS：用開頭幾筆（排除硬性失效的）的中位數，之後拿來偵測漂移。
+    # 用中位數而不是平均，避免某一兩筆異常值把基準拉歪。
+    baseline_rms = None
+    baseline_pool = []
+
     try:
         while not stop_event.is_set():
             if deadline and time.time() >= deadline:
@@ -179,7 +233,20 @@ def run(duration: float, interval: float, label: str, note: str,
                     # 隨身碟（跨檔案系統），os.replace 會丟 WinError 17 / EXDEV。
                     shutil.move(tmp_wav, target_path)
                     st = signal_stats(target_path)
-                    flag = quality_flag(st)
+                    flag = quality_flag(st, baseline_rms)
+
+                    # 還沒建立基準時，收集開頭幾筆沒有硬性失效的 RMS
+                    if baseline_rms is None and flag not in ("CLIPPED", "TOO_WEAK"):
+                        baseline_pool.append(st["rms"])
+                        if len(baseline_pool) >= BASELINE_SAMPLES:
+                            baseline_rms = float(np.median(baseline_pool))
+                            _safe_print(
+                                f"[RECORDER] 已建立基準 RMS = {baseline_rms:.4f}"
+                                f"（前 {BASELINE_SAMPLES} 筆的中位數）。"
+                                f"之後掉到 {baseline_rms*RMS_DROP_RATIO:.4f} 以下會標 RMS_DROP"
+                            )
+
+                    rms_ratio = (st["rms"] / baseline_rms) if baseline_rms else ""
                     if flag != "OK":
                         bad_count += 1
                     count += 1
@@ -191,6 +258,7 @@ def run(duration: float, interval: float, label: str, note: str,
                         "duration_s": duration,
                         "sample_rate": st["sample_rate"],
                         "rms": round(st["rms"], 6),
+                        "rms_ratio": round(rms_ratio, 3) if rms_ratio != "" else "",
                         "peak_hz": round(st["peak_hz"], 1),
                         "clip_pct": round(st["clip_pct"], 2),
                         "quality": flag,
@@ -198,11 +266,15 @@ def run(duration: float, interval: float, label: str, note: str,
                         "note": note,
                     })
 
-                    mark = "✓" if flag == "OK" else "⚠"
+                    # 嚴重問題用 ✗，輕微提醒用 ⚠，正常用 ✓
+                    mark = {"CLIPPED": "✗", "TOO_WEAK": "✗",
+                            "RMS_DROP": "✗", "RMS_JUMP": "✗"}.get(flag,
+                           "⚠" if flag != "OK" else "✓")
+                    ratio_str = f" ratio={rms_ratio:.2f}" if rms_ratio != "" else ""
                     elapsed = (now - started)
                     _safe_print(
                         f"{mark} [{count:5d}] {now.strftime('%m-%d %H:%M:%S')} "
-                        f"RMS={st['rms']:.4f} peak={st['peak_hz']:6.1f}Hz "
+                        f"RMS={st['rms']:.4f}{ratio_str} peak={st['peak_hz']:6.1f}Hz "
                         f"clip={st['clip_pct']:4.1f}% {flag:10s} "
                         f"(已錄 {elapsed.days}天{elapsed.seconds//3600}時)"
                     )
