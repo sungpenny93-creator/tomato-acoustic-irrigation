@@ -181,6 +181,7 @@ tomato-acoustic-irrigation/
 │
 ├── pi/                         # 🍓 樹莓派端：推論與控制
 │   ├── config.json             #   執行設定（含 SpikerBox 參數）
+│   ├── reference_profiles.json #   normal/thirsty 頻譜參考範本（similarity_classifier.py 讀取；由已標記錄音產生，唯一備份在此，勿刪）
 │   ├── audio_capture.py        #   SpikerBox 音訊擷取（自動偵測）
 │   ├── preprocessor.py         #   頻譜圖前處理（自動存檔）
 │   ├── inference.py            #   TFLite 推論引擎
